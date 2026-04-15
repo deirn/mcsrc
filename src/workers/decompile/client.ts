@@ -1,16 +1,14 @@
 import * as Comlink from "comlink";
 import type * as vf from "../../logic/vf";
-import { DecompileJar, type DecompileData, type DecompileResult } from "./types";
+import { DecompileJar, type DecompileResult } from "./types";
 import type { Jar } from "../../utils/Jar";
+import type { DecompileWorker } from "./worker";
 
-type DecompileWorker = typeof import("./worker");
-function createWrorker() {
-    return new ComlinkWorker<DecompileWorker>(
-        new URL("./worker", import.meta.url),
-        { name: "decompileWorker" }
-    );
+function createWorker() {
+    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module", name: "decompiler" });
+    return Comlink.wrap<DecompileWorker>(worker);
 }
-type WorkerInstance = ReturnType<typeof createWrorker>;
+type WorkerInstance = ReturnType<typeof createWorker>;
 
 const MAX_THREADS = navigator.hardwareConcurrency || 4;
 let workers: WorkerInstance[] = [];
@@ -22,7 +20,7 @@ async function ensureWorkers(count: number) {
 
     let newWorkers = Array.from(
         { length: count - workers.length },
-        () => createWrorker());
+        () => createWorker());
 
     await Promise.all(newWorkers.map(w => w.loadVFRuntime(preferWasmRuntime)));
     workers.push(...newWorkers);
@@ -61,6 +59,14 @@ export async function setOptions(options: vf.Options) {
 export async function deleteCache(): Promise<number> {
     const worker = await findWorker();
     return await worker.clear();
+}
+
+export async function onDecompiledSources(
+    jar: Jar,
+    callback: (className: string, source: string) => Promise<void> | void
+) {
+    const worker = await findWorker();
+    await worker.onDecompiledSources(jar.name, jar.blob, Comlink.proxy(callback));
 }
 
 export type DecompileEntireJarOptions = {

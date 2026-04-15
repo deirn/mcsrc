@@ -1,6 +1,6 @@
 import { Tabs } from "antd";
 import { useObservable } from "../utils/UseObservable";
-import { closeTab, openTab, setTabPosition, closeOtherTabs } from "../logic/Tabs";
+import { closeTab, setTabPosition, closeOtherTabs, openCodeTab } from "../logic/Tabs";
 import React, { useEffect, useRef, useState } from "react";
 import { selectedFile, openTabs } from "../logic/State";
 
@@ -170,7 +170,7 @@ export const TabsComponent = () => {
             placeIndexRef.current !== currentIndex
         ) {
             setTabPosition(draggingKey.current, placeIndexRef.current);
-            openTab(draggingKey.current);
+            openCodeTab(draggingKey.current);
         }
 
         draggingKey.current = "";
@@ -204,35 +204,37 @@ export const TabsComponent = () => {
 
     return (
         <>
-            <Tabs
-                hideAdd
-                type="editable-card"
-                activeKey={activeKey}
-                onEdit={onEdit}
-                onTabClick={(key) => openTab(key)}
-                items={tabs?.map(({ key }) => ({
-                    key,
-                    label: (
-                        <div
-                            onMouseDown={(e) => { handleMouseDown(e, key); }}
-                            onContextMenu={(e) => { handleContextMenu(e, key); }}
-                            ref={(el) => { tabRefs.current[key] = el; }}
-                            style={{ userSelect: "none", }}
-                        >
-                            {key.replace(".class", "").split("/").pop()}
-                        </div>
-                    )
-                }))}
-                renderTabBar={(tabBarProps, DefaultTabBar) => (
-                    <DefaultTabBar {...tabBarProps}>
-                        {(node) => (
-                            <div style={borderStyle(String(node.key))}>
-                                {node}
+            {tabs && tabs.length > 0 && (
+                <Tabs
+                    hideAdd
+                    type="editable-card"
+                    activeKey={activeKey}
+                    onEdit={onEdit}
+                    onTabClick={(key) => openCodeTab(key)}
+                    items={tabs?.map(({ key }) => ({
+                        key,
+                        label: (
+                            <div
+                                onMouseDown={(e) => { handleMouseDown(e, key); }}
+                                onContextMenu={(e) => { handleContextMenu(e, key); }}
+                                ref={(el) => { tabRefs.current[key] = el; }}
+                                style={{ userSelect: "none", }}
+                            >
+                                {key.replace(".class", "").split("/").pop()}
                             </div>
-                        )}
-                    </DefaultTabBar>
-                )}
-            />
+                        )
+                    }))}
+                    renderTabBar={(tabBarProps, DefaultTabBar) => (
+                        <DefaultTabBar {...tabBarProps}>
+                            {(node) => (
+                                <div style={borderStyle(String(node.key))}>
+                                    {node}
+                                </div>
+                            )}
+                        </DefaultTabBar>
+                    )}
+                />
+            )}
 
             {contextMenu && (
                 <div

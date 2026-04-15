@@ -45,7 +45,10 @@ export const minecraftVersions = agreedEula.observable.pipe(
         const isValid = currentVersion !== null && versions.some(v => v.id === currentVersion);
 
         if (!isValid && versions.length > 0) {
-            selectedMinecraftVersion.next(versions[0].id);
+            // Select the latest stable release version if it exists, otherwise fall back to the latest version
+            const latestRelease = versions.find(v => v.type === "release");
+            const defaultVersion = latestRelease ? latestRelease.id : versions[0].id;
+            selectedMinecraftVersion.next(defaultVersion);
         }
     }),
     shareReplay({ bufferSize: 1, refCount: false })
@@ -88,6 +91,7 @@ async function getJson<T>(url: string): Promise<T> {
 async function fetchVersions(): Promise<VersionsList> {
     const mojang = await getJson<VersionsList>(VERSIONS_URL);
     const filteredMojangVersions = mojang.versions.filter(v => {
+        if (new Date(v.releaseTime).getFullYear() >= 2026) return true;
         const match = v.id.match(/^(\d+)\.(\d+)/);
         if (!match) return false;
         const major = parseInt(match[1], 10);
@@ -105,45 +109,48 @@ async function fetchVersionManifest(version: VersionListEntry): Promise<VersionM
     return getJson<VersionManifest>(version.url);
 }
 
-async function cachedFetch(url: string): Promise<Response> {
+async function cachedFetch(url: string, onProgress?: (percent: number) => void): Promise<Blob> {
     if (!('caches' in window)) {
-        return fetch(url);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+        }
+        return await consumeResponseWithProgress(response, onProgress);
     }
 
     const cache = await caches.open(CACHE_NAME);
     const cachedResponse = await cache.match(url);
     if (cachedResponse) {
-        return cachedResponse;
-    };
+        return await cachedResponse.blob();
+    }
 
     const response = await fetch(url);
-    if (response.ok) {
-        await cache.put(url, response.clone());
+    if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
     }
-    return response;
+
+    const blob = await consumeResponseWithProgress(response, onProgress);
+
+    // Cache the blob after it's been consumed
+    await cache.put(url, new Response(blob, {
+        headers: response.headers
+    }));
+
+    return blob;
 }
 
-async function downloadMinecraftJar(version: VersionListEntry, progress: BehaviorSubject<number | undefined>): Promise<MinecraftJar> {
-    console.log(`Downloading Minecraft jar for version: ${version.id}`);
-    const versionManifest = await fetchVersionManifest(version);
-    const response = await cachedFetch(versionManifest.downloads.client.url);
-    if (!response.ok) {
-        throw new Error(`Failed to download Minecraft jar: ${response.statusText}`);
-    }
-
+async function consumeResponseWithProgress(response: Response, onProgress?: (percent: number) => void): Promise<Blob> {
     const contentLength = response.headers.get('content-length');
     const total = contentLength ? parseInt(contentLength, 10) : 0;
 
-    if (!response.body || total === 0) {
-        const blob = await response.blob();
-        const jar = await openJar(version.id, blob);
-        progress.next(undefined);
-        return { version: version.id, jar, blob };
+    if (!response.body || total === 0 || !onProgress) {
+        return await response.blob();
     }
 
     const reader = response.body.getReader();
     const chunks: Uint8Array<ArrayBuffer>[] = [];
     let receivedLength = 0;
+    let lastPercent = -1;
 
     while (true) {
         const { done, value } = await reader.read();
@@ -153,10 +160,25 @@ async function downloadMinecraftJar(version: VersionListEntry, progress: Behavio
         receivedLength += value.length;
 
         const percent = Math.round((receivedLength / total) * 100);
-        progress.next(percent);
+
+        if (percent !== lastPercent) {
+            onProgress(percent);
+            lastPercent = percent;
+        }
     }
 
-    const blob = new Blob(chunks);
+    return new Blob(chunks);
+}
+
+async function downloadMinecraftJar(version: VersionListEntry, progress: BehaviorSubject<number | undefined>): Promise<MinecraftJar> {
+    console.log(`Downloading Minecraft jar for version: ${version.id}`);
+    const versionManifest = await fetchVersionManifest(version);
+    const clientUrl = versionManifest.downloads.client.url;
+
+    const blob = await cachedFetch(clientUrl, (percent) => {
+        progress.next(percent);
+    });
+
     const jar = await openJar(version.id, blob);
     progress.next(undefined);
     return { version: version.id, jar, blob };

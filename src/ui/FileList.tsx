@@ -7,12 +7,12 @@ import { classesList } from '../logic/JarFile';
 import { useObservable } from '../utils/UseObservable';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Key } from 'antd/es/table/interface';
-import { openTab } from '../logic/Tabs';
+import { openCodeTab } from '../logic/Tabs';
 import { minecraftJar, type MinecraftJar } from '../logic/MinecraftApi';
 import { decompileClass } from '../logic/Decompiler';
 import { selectedFile, referencesQuery } from '../logic/State';
 import { compactPackages } from '../logic/Settings';
-import { jarIndex, type ClassData } from '../workers/JarIndex';
+import { jarIndex, type ClassData } from '../workers/jar-index/client';
 import { ClassDataIcon, JavaIcon, PackageIcon } from './intellij-icons';
 
 const classData: Observable<Map<string, ClassData> | null> = jarIndex.pipe(
@@ -108,7 +108,7 @@ const fileTree: Observable<TreeDataNode[]> = combineLatest([
 );
 
 const selectedFileKeys = selectedFile.pipe(
-    map(file => [file])
+    map(file => file ? [file] : [])
 );
 
 function getPathKeys(filePath: string): Key[] {
@@ -235,16 +235,30 @@ const FileList = () => {
     const onSelect: TreeProps['onSelect'] = useCallback((selectedKeys: Key[]) => {
         if (selectedKeys.length === 0) return;
         if (!classes || !classes.includes(selectedKeys[0] as string)) return;
-        openTab(selectedKeys.join("/"));
+        openCodeTab(selectedKeys.join("/"));
     }, [classes]);
 
     const treeData = useObservable(fileTree);
 
     useEffect(() => {
-        if (expandedKeys === undefined && selectedKeys?.[0]) {
-            setExpandedKeys(getPathKeys(selectedKeys[0] as string));
+        if (expandedKeys === undefined) {
+            if (selectedKeys?.[0]) {
+                setExpandedKeys(getPathKeys(selectedKeys[0] as string));
+            } else {
+                setExpandedKeys(['net', 'net/minecraft']);
+            }
         }
     }, [expandedKeys, selectedKeys]);
+
+    useEffect(() => {
+        if (selectedKeys?.[0] && expandedKeys !== undefined) {
+            const pathKeys = getPathKeys(selectedKeys[0] as string);
+            const newKeys = [...new Set([...expandedKeys, ...pathKeys])];
+            if (newKeys.length !== expandedKeys.length) {
+                setExpandedKeys(newKeys);
+            }
+        }
+    }, [selectedKeys, expandedKeys]);
 
     useEffect(() => {
         const closeMenu = () => setContextMenu(null);

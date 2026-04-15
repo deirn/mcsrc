@@ -1,9 +1,10 @@
 import { BehaviorSubject, combineLatest, distinctUntilChanged, from, map, Observable, switchMap, throttleTime } from "rxjs";
-import { jarIndex, type ReferenceKey, type ReferenceString } from "../workers/JarIndex";
-import { openTab } from "./Tabs";
+import { jarIndex } from "../workers/jar-index/client";
+import { openCodeTab } from "./Tabs";
 import { referencesQuery } from "./State";
 import type { Token } from "./Tokens";
 import type { DecompileResult } from "../workers/decompile/types";
+import type { ReferenceKey, ReferenceString } from "../workers/jar-index/types";
 
 export const referenceResults = referencesQuery
     .pipe(
@@ -83,7 +84,7 @@ export const nextReferenceNavigation = new BehaviorSubject<ReferenceNavigation |
 
 export function goToReference(query: ReferenceKey, reference: ReferenceString) {
     const className = reference.slice(2).split(":")[0].split('$')[0];
-    openTab(className + ".class");
+    openCodeTab(className + ".class");
 
     if (reference.startsWith("c:")) {
         // Nothing to jump to
